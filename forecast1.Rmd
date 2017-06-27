@@ -1,0 +1,77 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+метод обработки данных, восстанавливающий пропущенные значения во временных рядах. Метод заключается в том, что пропуски классифицируются на одиночные и групповые, а затем к ним применяются различные алгоритмы восстановления информации в зависимости от класса пропуска.
+
+КиберЛенинка: https://cyberleninka.ru/article/n/algoritm-vosstanovleniya-propuschennyh-znacheniy-vo-vremennyh-ryadah-v-sisteme-prognozirovaniya-elektropotrebleniya-na
+
+  + https://robjhyndman.com/hyndsight/forecast-combinations/
+
+```{r require}
+require(grnn); require(grt); require(openxlsx); require(imputeTS); require(lubridate); 
+require(forecast); require(forecastHybrid); require(ggplot2)
+require(opera); require(dygraphs)
+Sys.setenv(R_ZIPCMD = paste0("C:/Rtools", "/bin/zip.exe")) 
+file.cli.path <- "C:/Users/lora/Dropbox/Apps/missNNet"
+
+```
+
+```{r convert_to_timeseries}
+library(lubridate); library(plyr); library(xts); library(dygraphs); library(forecast)
+library(imputeTS)
+#load(paste0(file.cli.path, "/23274-igarka-ts.RData"))
+load(url("https://raw.githubusercontent.com/tmeits/2017-Seminars/master/data/23274-igarka.RData"))
+load(url("https://raw.githubusercontent.com/tmeits/2017-Seminars/master/data/23274-igarka-ts.RData"))
+#days <- length(df.cli.site$TMEAN)
+#tt <- seq(as.Date(paste0(min(df.cli.site$Year),'-01-01')), by='day', length=days)
+#df.cli <- data.frame(date=tt, temp =df.cli.site$TMEAN, prec=df.cli.site$PRECIP)
+df.cli.temp <- data.frame(
+  date = df.cli$date,
+  temp = df.cli$temp
+)
+df.cli.prec <- data.frame(
+  date = df.cli$date,
+  prec = df.cli$prec
+)
+
+df.cli.temp$my <-  floor_date(df.cli.temp$date, "month")
+df.cli.prec$my <-  floor_date(df.cli.prec$date, "month")
+df.cli.temp.month <- ddply(df.cli.temp, "my", summarise, temp = mean(temp))
+df.cli.prec.month <- ddply(df.cli.prec, "my", summarise, prec = mean(prec))
+
+str(ts(df.cli.temp.month$temp, start=c(1936, 1), end=c(2015, 12), frequency=12))
+igarka.temp.ts <- ts(df.cli.temp.month$temp, start=c(1936, 1), end=c(2015, 12), frequency=12)
+plotNA.distribution(window(igarka.temp.ts, end=c(1954,12)))
+plotNA.distribution(window(igarka.temp.ts, end=c(1954,12)))
+plotNA.distribution(window(igarka.temp.ts, start=c(1941,1),end=c(1954,12)))
+autoplot(igarka.temp.ts)
+dygraph(igarka.temp.ts)
+seasonplot(igarka.temp.ts)
+#dput(ts(df.cli.temp.month$temp, start=c(1936, 1), end=c(2015, 12), frequency=12))
+autoplot(forecast(ets(na.ma(igarka.temp.ts)), 10))
+autoplot(forecast(ets(igarka.temp.ts)))
+autoplot(forecast(auto.arima(na.ma(igarka.temp.ts))))
+autoplot(forecast(auto.arima(igarka.temp.ts)))
+autoplot(forecast(nnetar(igarka.temp.ts)))
+
+library(forecastHybrid)
+fit1 <- hybridModel(igarka.temp.ts, weights="equal")
+fit2 <- hybridModel(na.ma(igarka.temp.ts), weights="insample")
+
+```
+
+
+```{r}
+library(lubridate)
+df <- data.frame(
+  date = today() + days(1:3000),
+  x = runif(300)
+)
+df$my <- floor_date(df$date, "month")
+
+library(plyr)
+ddply(df, "my", summarise, x = mean(x))
+```
+
