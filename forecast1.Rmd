@@ -1,32 +1,56 @@
 ---
-title: "R Notebook"
-output: html_notebook
+title: "R time-series forecasting with neural network, auto.arima and ets"
+output:
+  html_notebook: default
 ---
 
 метод обработки данных, восстанавливающий пропущенные значения во временных рядах. Метод заключается в том, что пропуски классифицируются на одиночные и групповые, а затем к ним применяются различные алгоритмы восстановления информации в зависимости от класса пропуска.
 
-КиберЛенинка: https://cyberleninka.ru/article/n/algoritm-vosstanovleniya-propuschennyh-znacheniy-vo-vremennyh-ryadah-v-sisteme-prognozirovaniya-elektropotrebleniya-na
-
   + https://robjhyndman.com/hyndsight/forecast-combinations/
+  + https://cyberleninka.ru/article/n/algoritm-vosstanovleniya-propuschennyh-znacheniy-vo-vremennyh-ryadah-v-sisteme-prognozirovaniya-elektropotrebleniya-na
 
+```{r suppress, include=FALSE}
+suppressPackageStartupMessages(c(
+  library(data.table),
+  library(lubridate),
+  library(xts),
+  library(zoo),
+  library(magrittr),
+  library(plyr),
+  library(dplyr),
+  library(forecast),
+  library(forecastHybrid),
+  library(fma)))
+```
 ```{r require}
+#rm(list=ls())
 require(grnn); require(grt); require(openxlsx); require(imputeTS); require(lubridate); 
 require(forecast); require(forecastHybrid); require(ggplot2)
 require(opera); require(dygraphs)
+options(stringsAsFactors=FALSE)
 Sys.setenv(R_ZIPCMD = paste0("C:/Rtools", "/bin/zip.exe")) 
 file.cli.path <- "C:/Users/lora/Dropbox/Apps/missNNet"
+file.cli.path <- "C:/Users/IVA/Dropbox/Apps/missNNet" 
 
 ```
+
+
+#### I will just consider simple univariate time series forecasts, using the monthly Temp adm Prec data.
 
 ```{r convert_to_timeseries}
 library(lubridate); library(plyr); library(xts); library(dygraphs); library(forecast)
 library(imputeTS)
 #load(paste0(file.cli.path, "/23274-igarka-ts.RData"))
 load(url("https://raw.githubusercontent.com/tmeits/2017-Seminars/master/data/23274-igarka.RData"))
+summary(igarka.cli)
 load(url("https://raw.githubusercontent.com/tmeits/2017-Seminars/master/data/23274-igarka-ts.RData"))
-#days <- length(df.cli.site$TMEAN)
-#tt <- seq(as.Date(paste0(min(df.cli.site$Year),'-01-01')), by='day', length=days)
-#df.cli <- data.frame(date=tt, temp =df.cli.site$TMEAN, prec=df.cli.site$PRECIP)
+str(df.cli)
+
+#days <- length(igarka.cli$TMEAN)
+#tt <- seq(as.Date(paste0(min(igarka.cli$Year),'-01-01')), by='day', length=days)
+#df.igarka.cli <- data.frame(date=tt, temp =igarka.cli$TMEAN, prec=igarka.cli$PRECIP)
+
+
 df.cli.temp <- data.frame(
   date = df.cli$date,
   temp = df.cli$temp
@@ -38,40 +62,148 @@ df.cli.prec <- data.frame(
 
 df.cli.temp$my <-  floor_date(df.cli.temp$date, "month")
 df.cli.prec$my <-  floor_date(df.cli.prec$date, "month")
+
+#df.cli.temp$wy <- floor_date(df.cli.temp$date, unit = 'weeks') 
+
 df.cli.temp.month <- ddply(df.cli.temp, "my", summarise, temp = mean(temp))
 df.cli.prec.month <- ddply(df.cli.prec, "my", summarise, prec = mean(prec))
 
 str(ts(df.cli.temp.month$temp, start=c(1936, 1), end=c(2015, 12), frequency=12))
 igarka.temp.ts <- ts(df.cli.temp.month$temp, start=c(1936, 1), end=c(2015, 12), frequency=12)
+plotNA.distribution(window(igarka.temp.ts))
 plotNA.distribution(window(igarka.temp.ts, end=c(1954,12)))
-plotNA.distribution(window(igarka.temp.ts, end=c(1954,12)))
-plotNA.distribution(window(igarka.temp.ts, start=c(1941,1),end=c(1954,12)))
+plotNA.distribution(window(igarka.temp.ts, start=c(1955,1),end=c(1960,12)))
 autoplot(igarka.temp.ts)
 dygraph(igarka.temp.ts)
 seasonplot(igarka.temp.ts)
+tsdisplay(igarka.temp.ts) # http://forecasting.svetunkov.ru/forecasting_toolbox/
+plot(decompose(igarka)) # time series decomposition
 #dput(ts(df.cli.temp.month$temp, start=c(1936, 1), end=c(2015, 12), frequency=12))
-autoplot(forecast(ets(na.ma(igarka.temp.ts)), 10))
-autoplot(forecast(ets(igarka.temp.ts)))
-autoplot(forecast(auto.arima(na.ma(igarka.temp.ts))))
-autoplot(forecast(auto.arima(igarka.temp.ts)))
-autoplot(forecast(nnetar(igarka.temp.ts)))
 
-library(forecastHybrid)
-fit1 <- hybridModel(igarka.temp.ts, weights="equal")
-fit2 <- hybridModel(na.ma(igarka.temp.ts), weights="insample")
+```
+```{r prec_ts}
+str(ts(df.cli.prec.month$prec, start=c(1936, 1), end=c(2015, 12), frequency=12))
+igarka.prec.ts <- ts(df.cli.prec.month$prec, start=c(1936, 1), end=c(2015, 12), frequency=12)
+plotNA.distribution(window(igarka.prec.ts))
+plotNA.distribution(window(igarka.prec.ts, end=c(1954,12)))
+plotNA.distribution(window(igarka.prec.ts, start=c(1955,1),end=c(1960,12)))
+autoplot(igarka.prec.ts)
+dygraph(igarka.prec.ts)
+seasonplot(igarka.prec.ts)
+tsdisplay(igarka.prec.ts) # http://forecasting.svetunkov.ru/forecasting_toolbox/
+library(zoo)
+plot(decompose(na.StructTS(igarka.prec.ts))) # time series decomposition
+dygraph(na.StructTS(igarka.prec.ts), na.StructTS(igarka.prec.ts))
+```
+
+```{r}
+#set.seed(33222233)  # любимый seed Фрекен Бок
+igarka <- window(igarka.temp.ts, start=c(1937,1),end=c(1954,12))
+str(igarka); summary(igarka)
+igarka <- na.ma(igarka)
+# стандартное отклонение
+sd(igarka); 
+# дисперсия
+var(igarka)
+autoplot(igarka)
+h <- length(igarka)
+# 
+autoplot(forecast(ets(igarka)))
+autoplot(forecast(auto.arima(igarka)))
+autoplot(forecast(tbats(igarka))) # 
+autoplot(forecast(nnetar(igarka)))
+autoplot(stlf(igarka))
+
+ETS    <- forecast(ets(igarka))
+ARIMA  <- forecast(auto.arima(igarka))
+TBATS  <- forecast(tbats(igarka))
+NNETAR <- forecast(nnetar(igarka))
+STLF   <- forecast(stlf(igarka))
+
+X  <- cbind(ETS=ETS$mean, ARIMA=ARIMA$mean, STLF=STLF$mean, TBATS=TBATS$mean, NNETAR=NNETAR$mean)
+DF <- cbind(igarka, X)
+autoplot(DF)
+library(opera)
+# Функция смеси из пакета opera вычисляет веса при объединении прогнозов, исходя из того, насколько хорошо это было сделано до этого момента.
+test <- window(na.ma(igarka.temp.ts), start=c(1945,1), end=c(1954,12))
+MLpol0 <- mixture(model = "MLpol", loss.type = "square")
+weights <- predict(MLpol0, X, test, type='weights')
+head(weights)
 
 ```
 
-
 ```{r}
-library(lubridate)
-df <- data.frame(
-  date = today() + days(1:3000),
-  x = runif(300)
-)
-df$my <- floor_date(df$date, "month")
+library(forecastHybrid)
+fit1 <- hybridModel(igarka, weights="equal")
+fit2 <- hybridModel(igarka, weights="insample")
+plot(fit1)
+plot(fit2)
+fc1 <- forecast(fit1)
+fc2 <- forecast(fit2)
+df <- cbind(Data=igarka, Hybrid1=fc1$mean, Hybrid2=fc2$mean)
+autoplot(df) +
+  xlab("Year") + ylab("temp")
+```
 
-library(plyr)
-ddply(df, "my", summarise, x = mean(x))
+```{r model_an}
+igarka <- na.kalman(igarka)
+str(igarka)
+an.model <- hybridModel(
+  y = igarka,
+  models = "ns",
+  n.args = list(repeats = 50, size = 35),
+  s.args = list(robust = TRUE, biasadj = TRUE),
+  weights = "insample.errors", #"equal"
+  errorMethod = "MASE")
+plot(an.model)
+an.model.forecast <- forecast(an.model, 39)
+plot(an.model.forecast)
+t(accuracy(an.model.forecast))
+
+```
+## Neural network models  
+  + https://www.otexts.org/fpp/9/3
+  
+```{r model_nnetar}
+# Neural Network Time Series Forecasts
+igarka <- na.kalman(igarka)
+str(igarka)
+fit <- forecast::nnetar( # ,lambda=0 для осадков, чтобы не было негативных значений
+  igarka,
+  errorMethod = "MASE")
+#plot(fit)
+fit.forecast <- forecast.nnetar(fit, 39)
+plot(fit.forecast)
+autoplot(fit.forecast) +
+  ylab("temperature Celsius")
+plot(t(accuracy(fit.forecast)))
+print(fit.forecast)
+
+```
+```{r}
+#150 случайных чисел, принадлежащих нормальному распределению со средним значением 0 и стандартным отклонением 1
+library(forecastHybrid)
+x <- rnorm(1500, mean=0, sd=1)
+ 
+ets1 <- ets(x,model="ANN")
+ets2 <- ets(x,model="AAN")
+
+m1<-hybridModel(x, weights="insample") #equal
+plot(m1)
+```
+ + https://www.google.ru/search?q=dput&oq=dput&aqs=chrome..69i57j0l5.1311j0j7&sourceid=chrome&ie=UTF-8#q=dput&newwindow=1&lr=lang_ru
+ + http://machinelearning.ru/wiki/images/9/9f/Ps_ts_ets.pdf
+ + http://rstudio-pubs-static.s3.amazonaws.com/6005_3cb909c3359c4900905459f7a1d05895.html
+ + https://bdemeshev.github.io/time_series_project/
+ + http://r-analytics.blogspot.ru/2012/07/blog-post_20.html#.WVNW5GjyiMo
+ + https://books.google.ru/books?id=NIhXa6UeF2cC&pg=PA49&lpg=PA49&dq=plot(gtemp,+type%3D%27o%27,+ylab%3D%27Global+Temperature%27)&source=bl&ots=0X3KnvxbZG&sig=ugSud_i5PmgG2Ji3QWm9ZpP1W2A&hl=ru&sa=X&ved=0ahUKEwidzrO13uLUAhUlMZoKHeSwCYkQ6AEIRzAF#v=onepage&q=plot(gtemp%2C%20type%3D'o'%2C%20ylab%3D'Global%20Temperature')&f=false
+ 
+ 
+ Bates J, Granger C. 1969. The combination of forecasts.
+Operational Research Quarterly 20(4): 451–468.
+Box G, Jenkins G. 1970. Time Series Analysis, Forecasting
+and Control. Holden-Day: San Francisco, CA.
+ 
+```{r}
 ```
 
